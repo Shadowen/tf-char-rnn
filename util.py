@@ -1,7 +1,7 @@
 class lazy_property(object):
     '''
     meant to be used for lazy evaluation of an object attribute.
-    property should represent non-mutable data, as it replaces itself.
+    property should represent non-mutable datasets, as it replaces itself.
     '''
 
     def __init__(self, fget):
@@ -14,6 +14,7 @@ class lazy_property(object):
         value = self.fget(obj)
         setattr(obj, self.func_name, value)
         return value
+
 
 def get_unique_deterministic(lst):
     unique_list = []

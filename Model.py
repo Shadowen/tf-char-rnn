@@ -29,13 +29,13 @@ class Model:
             self.build_graph()
             # Make sure everything exists
             for p in [self.rnn_initial_state_placeholder, self.rnn_zero_state, self.rnn_sequence_length,
-                      self.rnn_final_state, self.char_out_probs, self.char_out_max, self.trainable_variables,
+                      self.rnn_final_state, self.char_out_probs, self._char_out_max, self.trainable_variables,
                       self.train_op]:
                 if p is None:
                     raise NotImplementedError()
 
     @abstractmethod
-    def build_graph(self, one_hot_char_in, char_target):
+    def build_graph(self):
         pass
 
     @abstractproperty
@@ -59,7 +59,7 @@ class Model:
         pass
 
     @abstractproperty
-    def char_out_max(self):
+    def _char_out_max(self):
         pass
 
     @abstractproperty
@@ -72,12 +72,10 @@ class Model:
 
     @abstractproperty
     def train_op(self):
-        # Optimizer
-        trainable_variables = self.get_trainable_variables()
-        grads = tf.gradients(self.loss, trainable_variables)
+        grads = tf.gradients(self.loss, self.trainable_variables)
         clipped_gradients, _ = tf.clip_by_global_norm(grads, 1.0)
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-        return optimizer.apply_gradients(zip(clipped_gradients, trainable_variables),
+        return optimizer.apply_gradients(zip(clipped_gradients, self.trainable_variables),
                                          global_step=self.global_step)
 
     @lazy_property
@@ -100,16 +98,28 @@ class Model:
             t_embedding[0, i] = self.char_to_ix[t[i]]
         self.sess.run(self.train_op, feed_dict={self.char_in: x_embedding, self.char_target: t_embedding})
 
-    def sample(self, primer, sample_size, temperature=1):
+    def sample(self, sample_size, primer, temperature=1):
         actual_output = []
 
-        prev_o = self.char_to_ix[primer]
-        s = self.sess.run(self.rnn_zero_state, feed_dict={self.char_in: np.zeros([1, self.max_timesteps])})
+        # Prime...
+        x = np.zeros([1, self.max_timesteps])
+        for i, p in enumerate(primer):
+            x[0, i] = self.char_to_ix[p]
+        if temperature == 0:
+            output, s = self.sess.run([self._char_out_max, self.rnn_final_state],
+                                      feed_dict={self.char_in: x, self.rnn_sequence_length: np.ones([1]) * len(primer)})
+            prev_o = output[0][-1]
+        else:
+            probs, s = self.sess.run([self._char_out_probs, self.rnn_final_state],
+                                     feed_dict={self.char_in: x, self.rnn_sequence_length: np.ones([1]) * len(primer)})
+            prev_o = np.random.choice(np.arange(self.vocab_size), p=probs[0][0])
+
+        # Sample!
         for i in range(sample_size):
             x = np.zeros([1, self.max_timesteps])
             x[0, 0] = prev_o
             if temperature == 0:
-                output, s = self.sess.run([self.char_out_max, self.rnn_final_state],
+                output, s = self.sess.run([self._char_out_max, self.rnn_final_state],
                                           feed_dict={self.char_in: x, self.rnn_initial_state_placeholder: s,
                                                      self.rnn_sequence_length: np.ones([1])})
                 o = output[0][0]
@@ -120,13 +130,14 @@ class Model:
                 o = np.random.choice(np.arange(self.vocab_size), p=probs[0][0])
             actual_output.append(self.ix_to_char[o])
             prev_o = o
+
         return actual_output
 
 
 if __name__ == '__main__':
-    # Load data
+    # Load datasets
     data = []
-    with open('data/tiny-shakespeare.txt', 'r') as f:
+    with open('datasets/tiny-shakespeare.txt', 'r') as f:
         for _ in range(1):
             data.extend(list(f.readline()))
 
@@ -146,6 +157,6 @@ if __name__ == '__main__':
 
         # Internal test - Ensure overfitting
         sample_size = 10
-        assert model.sample(primer=data[0], sample_size=sample_size, temperature=0) == data[1:sample_size + 1]
-        assert model.sample(primer=data[0], sample_size=sample_size, temperature=0) == \
-               model.sample(primer=data[0], sample_size=sample_size, temperature=1e-1000)
+        assert model.sample(primer=[data[0]], sample_size=sample_size, temperature=0) == data[1:sample_size + 1]
+        assert model.sample(primer=[data[0]], sample_size=sample_size, temperature=0) == \
+               model.sample(primer=[data[0]], sample_size=sample_size, temperature=1e-1000)
