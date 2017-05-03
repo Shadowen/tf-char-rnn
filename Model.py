@@ -1,10 +1,12 @@
+from abc import abstractmethod, abstractproperty
+
 import numpy as np
 import tensorflow as tf
 
-from util import cachedProperty
+from util import lazy_property
 
 
-class RNNEstimator():
+class Model:
     def __init__(self, sess, vocab, max_timesteps):
         self.sess = sess
         self.global_step = tf.train.get_global_step()
@@ -16,40 +18,67 @@ class RNNEstimator():
         self.vocab_size = len(vocab)
         self.max_timesteps = max_timesteps
 
-        scope_name = 'RNN_estimator'
-        with tf.variable_scope(scope_name):
+        self.scope_name = 'RNN_estimator'
+        with tf.variable_scope(self.scope_name):
             # Inputs
             self.char_in = tf.placeholder(dtype=tf.int32, shape=[None, max_timesteps])
             self.char_target = tf.placeholder(dtype=tf.int32, shape=[None, max_timesteps])
 
             # Model
-            batch_size = tf.shape(self.char_in)[0]
-            self.one_hot_char_in = tf.one_hot(indices=self.char_in, depth=self.vocab_size, dtype=tf.float32)
-            rnn_cell = tf.contrib.rnn.BasicRNNCell(128)
-            self.rnn_zero_state = rnn_cell.zero_state(1, tf.float32)
-            self.rnn_initial_state = tf.placeholder_with_default(self.rnn_zero_state,
-                                                                 shape=[None, rnn_cell.state_size])
-            self.rnn_sequence_length = tf.placeholder_with_default(
-                tf.tile(tf.ones([1]), multiples=[batch_size]) * self.max_timesteps,
-                shape=[None])
-            rnn_out, self.rnn_final_state = tf.nn.dynamic_rnn(rnn_cell, inputs=self.one_hot_char_in,
-                                                              sequence_length=self.rnn_sequence_length,
-                                                              initial_state=self.rnn_initial_state)
-            char_out_log_probs = tf.layers.dense(rnn_out, units=len(vocab))
-            self.char_out_probs = tf.nn.softmax(char_out_log_probs)
-            self.char_out_max = tf.argmax(char_out_log_probs, axis=2)
+            self.batch_size = tf.shape(self.char_in)[0]
+            self.build_graph()
+            # Make sure everything exists
+            for p in [self.rnn_initial_state_placeholder, self.rnn_zero_state, self.rnn_sequence_length,
+                      self.rnn_final_state, self.char_out_probs, self.char_out_max, self.trainable_variables,
+                      self.train_op]:
+                if p is None:
+                    raise NotImplementedError()
 
-            # Loss
-            self.loss = tf.reduce_mean(
-                tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.char_target, logits=char_out_log_probs))
+    @abstractmethod
+    def build_graph(self, one_hot_char_in, char_target):
+        pass
 
-            # Optimizer
-            self.trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
-            grads = tf.gradients(self.loss, self.trainable_variables)
-            clipped_gradients, _ = tf.clip_by_global_norm(grads, 1.0)
-            optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-            self.train_op = optimizer.apply_gradients(zip(clipped_gradients, self.trainable_variables),
-                                                      global_step=self.global_step)
+    @abstractproperty
+    def rnn_initial_state_placeholder(self):
+        pass
+
+    @abstractproperty
+    def rnn_zero_state(self):
+        pass
+
+    @abstractproperty
+    def rnn_sequence_length(self):
+        pass
+
+    @abstractproperty
+    def rnn_final_state(self):
+        pass
+
+    @abstractproperty
+    def char_out_probs(self):
+        pass
+
+    @abstractproperty
+    def char_out_max(self):
+        pass
+
+    @abstractproperty
+    def loss(self):
+        pass
+
+    @lazy_property
+    def trainable_variables(self):
+        return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name)
+
+    @abstractproperty
+    def train_op(self):
+        # Optimizer
+        trainable_variables = self.get_trainable_variables()
+        grads = tf.gradients(self.loss, trainable_variables)
+        clipped_gradients, _ = tf.clip_by_global_norm(grads, 1.0)
+        optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+        return optimizer.apply_gradients(zip(clipped_gradients, trainable_variables),
+                                         global_step=self.global_step)
 
     @lazy_property
     def saver(self):
@@ -75,18 +104,18 @@ class RNNEstimator():
         actual_output = []
 
         prev_o = self.char_to_ix[primer]
-        s = self.sess.run(self.rnn_zero_state)
+        s = self.sess.run(self.rnn_zero_state, feed_dict={self.char_in: np.zeros([1, self.max_timesteps])})
         for i in range(sample_size):
             x = np.zeros([1, self.max_timesteps])
             x[0, 0] = prev_o
             if temperature == 0:
                 output, s = self.sess.run([self.char_out_max, self.rnn_final_state],
-                                          feed_dict={self.char_in: x, self.rnn_initial_state: s,
+                                          feed_dict={self.char_in: x, self.rnn_initial_state_placeholder: s,
                                                      self.rnn_sequence_length: np.ones([1])})
                 o = output[0][0]
             else:
-                probs, s = self.sess.run([self.char_out_probs, self.rnn_final_state],
-                                         feed_dict={self.char_in: x, self.rnn_initial_state: s,
+                probs, s = self.sess.run([self._char_out_probs, self.rnn_final_state],
+                                         feed_dict={self.char_in: x, self.rnn_initial_state_placeholder: s,
                                                     self.rnn_sequence_length: np.ones([1])})
                 o = np.random.choice(np.arange(self.vocab_size), p=probs[0][0])
             actual_output.append(self.ix_to_char[o])
@@ -106,7 +135,7 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
         max_timesteps = 8
-        model = RNNEstimator(sess=sess, vocab=list(set(data)), max_timesteps=max_timesteps)
+        model = Model(sess=sess, vocab=list(set(data)), max_timesteps=max_timesteps)
         sess.run(tf.global_variables_initializer())
 
         # Train
