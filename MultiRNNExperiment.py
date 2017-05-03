@@ -8,9 +8,7 @@ class ExperimentModel(Model):
     def build_graph(self):
         one_hot_char_in = tf.one_hot(indices=self.char_in, depth=self.vocab_size, dtype=tf.float32)
 
-        self._rnn_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicRNNCell(128) for _ in range(2)])
-        self._rnn_sequence_length = tf.placeholder_with_default(
-            tf.tile(tf.ones([1]), multiples=[self.batch_size]) * self.max_timesteps, shape=[None])
+        self._rnn_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicRNNCell(128) for _ in range(3)])
         rnn_out, self._rnn_final_state = tf.nn.dynamic_rnn(self._rnn_cell, inputs=one_hot_char_in,
                                                            sequence_length=self.rnn_sequence_length,
                                                            initial_state=self.rnn_initial_state_placeholder)
@@ -27,11 +25,11 @@ class ExperimentModel(Model):
 
     @lazy_property
     def rnn_zero_state(self):
-        return self._rnn_cell.zero_state(1, tf.float32)
+        return self._rnn_cell.zero_state(self.batch_size, tf.float32)
 
     @lazy_property
     def rnn_sequence_length(self):
-        return self._rnn_sequence_length
+        return tf.placeholder_with_default(tf.ones([self.batch_size]) * self.max_timesteps, shape=[None])
 
     @lazy_property
     def rnn_final_state(self):
@@ -70,7 +68,7 @@ if __name__ == '__main__':
         global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
 
         max_timesteps = 25
-        model = ExperimentModel(sess=sess, vocab=dataset.vocab, max_timesteps=max_timesteps)
+        model = ExperimentModel(sess=sess, vocab=dataset._vocab, max_timesteps=max_timesteps)
         sess.run(tf.global_variables_initializer())
         if os.path.exists(model_dir):
             model.restore_pretrained(model_dir)
@@ -83,16 +81,16 @@ if __name__ == '__main__':
         # Train
         total_steps = 20000
         for step in range(global_step, total_steps):
-            if step % 1000 == 0:
+            if step % 100 == 0:
                 primer = dataset.get_primer(length=10)
                 print(
                     'Step {}/{}: {}'.format(step, total_steps,
-                                            repr(''.join(primer) + '|' + ''.join(
+                                            repr(''.join(primer[0]) + '|' + ''.join(
                                                 model.sample(primer=primer, sample_size=150)))))
                 model.save(model_dir)
-            model.train(**dataset.get_training_samples(max_timesteps=model.max_timesteps))
+            model.train(**dataset.get_training_samples(batch_size=100, max_timesteps=model.max_timesteps))
 
         # Sample
         print('Training complete after {}! Sampling...'.format(total_steps))
         primer = dataset.get_primer(length=10)
-        print(''.join(primer) + '|' + ''.join(model.sample(sample_size=1000, primer=primer)))
+        print(''.join(primer[0]) + '|' + ''.join(model.sample(sample_size=1000, primer=primer)))

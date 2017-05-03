@@ -91,27 +91,30 @@ class Model:
         self.saver.save(self.sess, filepath + 'model', global_step=self.global_step)
 
     def train(self, x, t):
-        x_embedding = np.zeros([1, self.max_timesteps])
-        t_embedding = np.zeros([1, self.max_timesteps])
-        for i in range(self.max_timesteps):
-            x_embedding[0, i] = self.char_to_ix[x[i]]
-            t_embedding[0, i] = self.char_to_ix[t[i]]
+        batch_size = x.shape[0]
+        x_embedding = np.zeros([batch_size, self.max_timesteps])
+        t_embedding = np.zeros([batch_size, self.max_timesteps])
+        for b in range(batch_size):
+            for i in range(self.max_timesteps):
+                x_embedding[b, i] = self.char_to_ix[x[b, i]]
+                t_embedding[b, i] = self.char_to_ix[t[b, i]]
         self.sess.run(self.train_op, feed_dict={self.char_in: x_embedding, self.char_target: t_embedding})
 
     def sample(self, sample_size, primer, temperature=1):
         actual_output = []
 
         # Prime...
+        primer_duration = np.ones([1]) * primer.shape[1]
         x = np.zeros([1, self.max_timesteps])
-        for i, p in enumerate(primer):
+        for i, p in enumerate(primer[0]):
             x[0, i] = self.char_to_ix[p]
         if temperature == 0:
             output, s = self.sess.run([self._char_out_max, self.rnn_final_state],
-                                      feed_dict={self.char_in: x, self.rnn_sequence_length: np.ones([1]) * len(primer)})
+                                      feed_dict={self.char_in: x, self.rnn_sequence_length: primer_duration})
             prev_o = output[0][-1]
         else:
             probs, s = self.sess.run([self._char_out_probs, self.rnn_final_state],
-                                     feed_dict={self.char_in: x, self.rnn_sequence_length: np.ones([1]) * len(primer)})
+                                     feed_dict={self.char_in: x, self.rnn_sequence_length: primer_duration})
             prev_o = np.random.choice(np.arange(self.vocab_size), p=probs[0][0])
 
         # Sample!
