@@ -2,57 +2,32 @@
 Run any `*Experiment.py` file with `python3` to train and evaluate a model. Models will automatically save to and load from `models/*`.
 
 ## Samples
+
+
 ### [VanillaRNNExperiment](VanillaRNNExperiment.py)
-RNN with 128 cells. 25 step BPTT unrolling.
-    
-    DUCHESS OF Gade anstle
-    Anow to services on true kill's.
-    Nor thou cospity any sing.
-    
-    HERMIONE:
-    Noye, To cupity:
-    You dear lemiout like not him,
+1-layer RNN with 128 cells. 25 step BPTT unrolling.
 
-### [MultiRNNExperiment](MutliRNNExperiment.py)
-2-layer RNN with 128 cells each. 25 step BPTT unrolling.
-
-    CYSUS:
-    Heaven gives you in love; welcome again; there in thy lord, and poor water?
-    Farewell.
+    PEREY:
+    Seld tell sorst her that uptentare,
+    With your
+    Beast to threal undrenciust is thou mank' meany Sufer she, reased, friend
+    First not so now sach dan ungaluble
+    Well, therey all constie,
+    That I mwer wakerth Duke am is thangucth'd atnay vecantes; your gare that I'll-riber,
+    You ha't not sighty have fromy I vouch a knocks known of Come: good wind whom that I lein of the bow dobe to then, kishand their comestry a shor'd hims lour,
+    Af, these not scapry tend that!
     
-    ALBANY:
-    The stone entugin the Dayed attretour condowires. Madam,
-    Heaven forfing King Lord:
-    Set, Deing that is Lypimness halters,
-    In guilt, to me if I am a
-    vour moor.
+    SCYMILCUT:
+    Youthou'ly not, all, How dud turs: honour'd; by gone,
+    Vight it,
+    If gold doggurs,
+    For I still but what! what, my noul dayanch is upan him sear to than harious, which you what was he houlds good be.
     
-    FLAVIUS:
-    Revenbs Clite
-    It well not did too love;
-    Whileful please for your
-    perdomirazed by Pagars.
+    SILIALIAN HARCUS:
+    So I know ot diggaing withbus to thy wild thou all, a drain's a luter,
+    Ang the now foit fresh, better fallow
 
 ### [MultiLSTMExperiment](MultiLSTMExperiment.py)
-3-layer LSTM with 512 cells each. 0.5 dropout_keep_prob on RNN outputs during training. 50 step BPTT unrolling.
-
-    FALSTAFF:
-    Pray God, my lord; it was a villain, good madam; for be a thankful looks out of the way kind on priest;
-    Never sounded will, last relieved.
-    
-    Most right; servantly.
-    
-    MOWBRAY:
-    Very blind, my liege, I must show it for hin good,
-    And are past promited, and tell me there.
-    
-    ANTIPHOLUS OF SYRACUSE:
-    I will, my lord: I for a well-dignity, that Had all the act,
-    Hast thou you trumpet in Thursday people! the queen?
-    Farewell, lady.'
-
-    
-### [EpochBasedMultiLSTMExperiment](EpochBasedMultiLSTMExperiment.py)
 3-layer LSTM with 512 cells each. 0.5 dropout_keep_prob on RNN outputs during training. 100 step BPTT unrolling.
 
     Good God: and thou'lt not put thee in thy
@@ -87,8 +62,8 @@ RNN with 128 cells. 25 step BPTT unrolling.
     
 # TODO
 - RNN memory visualization
-- Summaries
 - Timing analysis
+- Calculate perplexity
 - Clean up get_unique_deterministic by saving the mappings inside RNNEstimator
 - Sample with temperature using tf.multinomial
 - Embedding with tensorflow with tf.embedding_lookup

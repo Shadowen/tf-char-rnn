@@ -17,8 +17,7 @@ class TinyShakespeareDataSet(DataSet):
         start_idx = np.random.randint(len(self._data) - max_timesteps, size=[batch_size])
         idx = np.tile(np.arange(max_timesteps), reps=[batch_size, 1]) + np.expand_dims(start_idx, axis=1)
 
-        return {'x': self._data[idx],
-                't': self._data[idx + 1]}
+        return self._data[idx], self._data[idx + 1]
 
     def get_primer(self, length):
         start_idx = np.random.randint(len(self._data) - length, size=[1])

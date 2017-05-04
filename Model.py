@@ -1,16 +1,18 @@
+import os
 from abc import abstractmethod, abstractproperty
 
 import numpy as np
 import tensorflow as tf
 
-from util import lazy_property
+from util import lazyproperty
 
 
 class Model:
-    def __init__(self, sess, vocab, max_timesteps):
+    def __init__(self, sess, vocab, max_timesteps, filepath):
         self.sess = sess
         self.global_step = tf.train.get_global_step()
         assert self.global_step is not None
+        self._filepath = filepath
 
         self.vocab = vocab
         self.char_to_ix = {ch: i for i, ch in enumerate(vocab)}
@@ -73,7 +75,7 @@ class Model:
     def loss(self):
         pass
 
-    @lazy_property
+    @lazyproperty
     def trainable_variables(self):
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope_name)
 
@@ -85,19 +87,33 @@ class Model:
         return optimizer.apply_gradients(zip(clipped_gradients, self.trainable_variables),
                                          global_step=self.global_step)
 
-    @lazy_property
+    def create_summaries(self):
+        self._summary_writer = tf.summary.FileWriter(logdir=self._filepath, graph=self.sess.graph)
+
+        self._loss_summary_op = tf.summary.scalar('Loss', self.loss)
+        self._training_summary_ops = tf.summary.merge([self._loss_summary_op])
+
+        self._validation_loss_summary_op = tf.summary.scalar('Validation_Loss', self.loss)
+        self._validation_summary_ops = tf.summary.merge([self._validation_loss_summary_op])
+
+    @lazyproperty
     def saver(self):
         saver = tf.train.Saver(var_list=self.trainable_variables + [self.global_step], max_to_keep=2,
                                keep_checkpoint_every_n_hours=12)
         return saver
 
-    def restore_pretrained(self, filepath):
-        self.saver.restore(self.sess, tf.train.latest_checkpoint(filepath))
+    def maybe_restore(self):
+        if not os.path.exists(self._filepath):
+            os.makedirs(self._filepath)
+        if os.path.exists(self._filepath + 'checkpoint'):
+            self.saver.restore(self.sess, tf.train.latest_checkpoint(self._filepath))
+            global_step = self.sess.run(self.global_step)
+            print('Restored model from {} at step {}'.format(self._filepath, global_step))
 
-    def save(self, filepath):
-        self.saver.save(self.sess, filepath + 'model', global_step=self.global_step)
+    def save(self):
+        self.saver.save(self.sess, self._filepath + 'model', global_step=self.global_step)
 
-    def train(self, x, t, epoch=None, additional_feed_args={}):
+    def train(self, x, t, epoch=None, record_summary=False, additional_feed_args={}):
         batch_size = x.shape[0]
         x_embedding = np.zeros([batch_size, self.max_timesteps])
         t_embedding = np.zeros([batch_size, self.max_timesteps])
@@ -110,11 +126,39 @@ class Model:
             self._prev_rnn_state = self.sess.run(self.rnn_zero_state,
                                                  feed_dict={self.char_in: x_embedding, **additional_feed_args})
             self._epoch = epoch
-        self.sess.run(self.train_op,
-                      feed_dict={self.char_in: x_embedding,
-                                 self.char_target: t_embedding,
-                                 self.rnn_initial_state_placeholder: self._prev_rnn_state,
-                                 **additional_feed_args})
+
+        feed_dict = {self.char_in: x_embedding,
+                     self.char_target: t_embedding,
+                     self.rnn_initial_state_placeholder: self._prev_rnn_state,
+                     **additional_feed_args}
+        if record_summary:
+            global_step, training_summaries, _ = self.sess.run(
+                [self.global_step, self._training_summary_ops, self.train_op],
+                feed_dict=feed_dict)
+            self._summary_writer.add_summary(training_summaries, global_step=global_step)
+        else:
+            self.sess.run(self.train_op, feed_dict=feed_dict)
+
+    def validate(self, x, t, additional_feed_args={}):
+        batch_size = x.shape[0]
+        x_embedding = np.zeros([batch_size, self.max_timesteps])
+        t_embedding = np.zeros([batch_size, self.max_timesteps])
+        for b in range(batch_size):
+            for i in range(self.max_timesteps):
+                x_embedding[b, i] = self.char_to_ix[x[b, i]]
+                t_embedding[b, i] = self.char_to_ix[t[b, i]]
+
+        prev_rnn_state = self.sess.run(self.rnn_zero_state,
+                                       feed_dict={self.char_in: x_embedding, **additional_feed_args})
+
+        feed_dict = {self.char_in: x_embedding,
+                     self.char_target: t_embedding,
+                     self.rnn_initial_state_placeholder: prev_rnn_state,
+                     **additional_feed_args}
+        global_step, validation_summaries, _ = self.sess.run(
+            [self.global_step, self._validation_summary_ops, self.train_op],
+            feed_dict=feed_dict)
+        self._summary_writer.add_summary(validation_summaries, global_step=global_step)
 
     def sample(self, sample_size, primer, temperature=1, additional_feed_args={}):
         actual_output = []

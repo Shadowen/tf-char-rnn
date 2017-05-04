@@ -1,4 +1,4 @@
-class lazy_property(object):
+class lazyproperty(object):
     '''
     meant to be used for lazy evaluation of an object attribute.
     property should represent non-mutable datasets, as it replaces itself.

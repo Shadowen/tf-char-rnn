@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from Model import Model
-from util import lazy_property
+from util import lazyproperty
 
 
 class ExperimentModel(Model):
@@ -21,36 +21,36 @@ class ExperimentModel(Model):
         self._char_out_probs = tf.nn.softmax(self._char_out_log_probs)
         self._char_out_max = tf.argmax(self._char_out_log_probs, axis=2)
 
-    @lazy_property
+    @lazyproperty
     def rnn_initial_state_placeholder(self):
         return self._rnn_initial_state_placeholder
 
-    @lazy_property
+    @lazyproperty
     def rnn_zero_state(self):
         return self._rnn_cell.zero_state(self.batch_size, tf.float32)
 
-    @lazy_property
+    @lazyproperty
     def rnn_sequence_length(self):
         return self._rnn_sequence_length
 
-    @lazy_property
+    @lazyproperty
     def rnn_final_state(self):
         return self._rnn_final_state
 
-    @lazy_property
+    @lazyproperty
     def char_out_probs(self):
         return self._char_out_probs
 
-    @lazy_property
-    def _char_out_max(self):
+    @lazyproperty
+    def char_out_max(self):
         return self._char_out_max
 
-    @lazy_property
+    @lazyproperty
     def loss(self):
         return tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.char_target, logits=self._char_out_log_probs))
 
-    @lazy_property
+    @lazyproperty
     def train_op(self):
         grads = tf.gradients(self.loss, self.trainable_variables)
         clipped_gradients, _ = tf.clip_by_global_norm(grads, 1.0)
@@ -60,43 +60,45 @@ class ExperimentModel(Model):
 
 if __name__ == '__main__':
     import os
+    from datasets.FullShakespeareDataSet import FullShakespeareDataSet
 
-    import numpy as np
-
-    from datasets.TinyShakespeareDataSet import TinyShakespeareDataSet
-
-    # Load datasets
-    dataset = TinyShakespeareDataSet()
+    # Load dataset
+    dataset = FullShakespeareDataSet()
 
     with tf.Session() as sess:
         model_dir = 'models/{}/'.format(os.path.splitext(os.path.basename(__file__))[0])
         global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
 
         max_timesteps = 25
-        model = ExperimentModel(sess=sess, vocab=dataset.vocab, max_timesteps=max_timesteps)
+        model = ExperimentModel(sess=sess, vocab=dataset.vocab, max_timesteps=max_timesteps, filepath=model_dir)
         sess.run(tf.global_variables_initializer())
-        if os.path.exists(model_dir):
-            model.restore_pretrained(model_dir)
-            global_step = sess.run(global_step_tensor)
-            print('Restored model from {} at step {}'.format(model_dir, global_step))
-        else:
-            os.makedirs(model_dir)
-            global_step = sess.run(global_step_tensor)
+        model.maybe_restore()
+        global_step = sess.run(global_step_tensor)
 
         # Train
-        total_steps = 20000
-        batch_size = 100
-        for step in range(global_step, total_steps):
-            if step % 100 == 0:
-                primer = dataset.get_primer(length=10)
-                print(
-                    'Step {}/{}: {}'.format(step, total_steps,
-                                            repr(''.join(primer[0]) + '|' + ''.join(
-                                                model.sample(primer=primer, sample_size=150)))))
-                model.save(model_dir)
-            model.train(**dataset.get_training_samples(batch_size=batch_size, max_timesteps=model.max_timesteps))
+        num_epochs = 1000
+        steps_per_epoch = 100
+        total_steps = num_epochs * steps_per_epoch
+        for epoch_num in range(num_epochs):
+            for iteration in range(steps_per_epoch):
+                if global_step % 100 == 0:
+                    primer = dataset.get_primer(length=10)
+                    print('Step {}/{}: {}'.format(global_step, total_steps, repr(''.join(primer[0]) + '|' + ''.join(
+                        model.sample(primer=primer, sample_size=150)))))
+                    model.validate(*dataset.get_validation_samples(batch_size=100, max_timesteps=model.max_timesteps))
+                if global_step % 1000 == 0:
+                    model.save()
+                model.train(*dataset.get_training_samples(epoch=epoch_num, batch_size=100,
+                                                          max_timesteps=model.max_timesteps),
+                            record_summary=global_step % 100)
+                global_step = sess.run(global_step_tensor)
+
+                if global_step > total_steps:
+                    break
+            if global_step > total_steps:
+                break
 
         # Sample
-        print('Training complete after {}! Sampling...'.format(total_steps))
-        primer = dataset.get_primer(length=10)
+        print('Training complete after {} global steps! Sampling...'.format(total_steps))
+        primer = dataset.get_primer(length=20)
         print(''.join(primer[0]) + '|' + ''.join(model.sample(sample_size=1000, primer=primer)))
