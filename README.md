@@ -4,18 +4,6 @@ Run any `*Experiment.py` file with `python3` to train and evaluate a model. Mode
 ## Samples
 ### [VanillaRNNExperiment](VanillaRNNExperiment.py)
 RNN with 128 cells. 25 step BPTT unrolling.
-
-    SICINIUS:
-    So, see: thou brook! your book! God, Marcius King be are the isseeped,
-    Steantly, good for consonerio, as to great mock till I have me'er 'ccoune!
-    Home pation of weet-slains. She the chaugesty, brown than you, pearies and bank ladan;
-    And it, and marrer yet would of think the seoveder have place with manysled
-    Here is hence; or they noths
-    Of the such me, and against is illos; with upoin dulply, for him; this in his enaubfletions,
-    I will no may in the king ack,
-    When dumbll-dis he should?
-    
-    Muss'd, let expect.
     
     DUCHESS OF Gade anstle
     Anow to services on true kill's.
@@ -24,11 +12,8 @@ RNN with 128 cells. 25 step BPTT unrolling.
     HERMIONE:
     Noye, To cupity:
     You dear lemiout like not him,
-    I do be was dobocks at sound, anghoo the shalt,
-    My son; of slewily antiul to the fleed thee since
-    If I how turn, and put an earfretition
 
-### [MutliRNNExperiment](MutliRNNExperiment.py)
+### [MultiRNNExperiment](MutliRNNExperiment.py)
 2-layer RNN with 128 cells each. 25 step BPTT unrolling.
 
     CYSUS:
@@ -51,15 +36,6 @@ RNN with 128 cells. 25 step BPTT unrolling.
 ### [MultiLSTMExperiment](MultiLSTMExperiment.py)
 3-layer LSTM with 512 cells each. 0.5 dropout_keep_prob on RNN outputs during training. 50 step BPTT unrolling.
 
-    PROSPERO:
-    from this young beds; being better ladies, here that all the
-    hall you well see Mountremen?
-    
-    FALSTAFF:
-    So a scorming of good tent hath slung him when I am I'll be committed to be is not in the gacked before!
-    If he report on me my joyful virtue; hath
-    so state honoured, but therefore we swift fair lands thou dost meet.
-    
     FALSTAFF:
     Pray God, my lord; it was a villain, good madam; for be a thankful looks out of the way kind on priest;
     Never sounded will, last relieved.
@@ -75,9 +51,44 @@ RNN with 128 cells. 25 step BPTT unrolling.
     Hast thou you trumpet in Thursday people! the queen?
     Farewell, lady.'
 
+    
+### [EpochBasedMultiLSTMExperiment](EpochBasedMultiLSTMExperiment.py)
+3-layer LSTM with 512 cells each. 0.5 dropout_keep_prob on RNN outputs during training. 100 step BPTT unrolling.
+
+    Good God: and thou'lt not put thee in thy
+    requisation. Say that ave your father shall joy--
+    
+    LORD POLONIUS:
+    You were man; ay, you do, it is a noble potent to the
+    creature. Wherein all bid 'To this gipsy's shallows to
+    the head of door how? doth you forth but a stage?
+    
+    Boy:
+    Or not an lord, if thou didst deliver a thousand deeds.
+    
+    DUKE ORSINO:
+    I will help you, gentlemen.
+    
+    BOYET:
+    Princes, it is no more of my life! I think I am not
+    warm, here is Normandy. The toing ere thy tongue
+    be, should forthwith flex or forfeit by infancy, but
+    cross-breaking house. I'll no more to you.
+    
+    TITANIA:
+    Receive him; you, my good lord, come to leave,
+    To see them master of her tongue; for he is so much
+    much very enough.
+    
+    MALVOLIO:
+    So thou shalt create; thou'rt not Banquo, and mistress
+    of Nature; and your stales against thy death. Follow
+    it: stay, man! goddess!
+    
 # TODO
 - RNN memory visualization
 - Summaries
+- Timing analysis
 - Clean up get_unique_deterministic by saving the mappings inside RNNEstimator
 - Sample with temperature using tf.multinomial
 - Embedding with tensorflow with tf.embedding_lookup

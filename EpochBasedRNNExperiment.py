@@ -8,10 +8,11 @@ class ExperimentModel(Model):
     def build_graph(self):
         one_hot_char_in = tf.one_hot(indices=self.char_in, depth=self.vocab_size, dtype=tf.float32)
 
-        self._dropout_keep_prob = tf.placeholder_with_default(1.0, shape=[], name='dropout_keep_prob')
-        single_cell = lambda: tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.BasicLSTMCell(512),
-                                                            output_keep_prob=self._dropout_keep_prob)
-        self._rnn_cell = tf.contrib.rnn.MultiRNNCell([single_cell() for _ in range(3)])
+        self._rnn_cell = tf.contrib.rnn.BasicRNNCell(128)
+        self._rnn_sequence_length = tf.placeholder_with_default(
+            tf.tile(tf.ones([1]), multiples=[self.batch_size]) * self.max_timesteps, shape=[None])
+        self._rnn_initial_state_placeholder = tf.placeholder_with_default(self.rnn_zero_state,
+                                                                          shape=[None, self._rnn_cell.state_size])
         rnn_out, self._rnn_final_state = tf.nn.dynamic_rnn(self._rnn_cell, inputs=one_hot_char_in,
                                                            sequence_length=self.rnn_sequence_length,
                                                            initial_state=self.rnn_initial_state_placeholder)
@@ -20,18 +21,9 @@ class ExperimentModel(Model):
         self._char_out_probs = tf.nn.softmax(self._char_out_log_probs)
         self._char_out_max = tf.argmax(self._char_out_log_probs, axis=2)
 
-    @property
-    def dropout_keep_prob(self):
-        return self._dropout_keep_prob
-
     @lazy_property
     def rnn_initial_state_placeholder(self):
-        return tuple(
-            tf.contrib.rnn.LSTMStateTuple(
-                tf.placeholder_with_default(self.rnn_zero_state[i].c, shape=[None, self._rnn_cell.state_size[i].c]),
-                tf.placeholder_with_default(self.rnn_zero_state[i].h, shape=[None, self._rnn_cell.state_size[i].h])
-            ) for i in range(len(self._rnn_cell._cells))
-        )
+        return self._rnn_initial_state_placeholder
 
     @lazy_property
     def rnn_zero_state(self):
@@ -39,8 +31,7 @@ class ExperimentModel(Model):
 
     @lazy_property
     def rnn_sequence_length(self):
-        return tf.placeholder_with_default(tf.tile(tf.ones([1]), multiples=[self.batch_size]) * self.max_timesteps,
-                                           shape=[None])
+        return self._rnn_sequence_length
 
     @lazy_property
     def rnn_final_state(self):
@@ -66,45 +57,47 @@ class ExperimentModel(Model):
         optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
         return optimizer.apply_gradients(zip(clipped_gradients, self.trainable_variables), global_step=self.global_step)
 
-    def train(self, x, t, additional_feed_args={}):
-        super(ExperimentModel, self).train(x, t, additional_feed_args={self.dropout_keep_prob: 0.5})
-
 
 if __name__ == '__main__':
     import os
-    from datasets.FullShakespeareDataSet import FullShakespeareDataSet
+    import numpy as np
+    from datasets.EpochBasedFullShakespeareDataSet import EpochBasedFullShakespeareDataSet
 
-    # Load datasets
-    dataset = FullShakespeareDataSet()
+    # Load dataset
+    dataset = EpochBasedFullShakespeareDataSet()
 
     with tf.Session() as sess:
         model_dir = 'models/{}/'.format(os.path.splitext(os.path.basename(__file__))[0])
         global_step_tensor = tf.Variable(0, trainable=False, name='global_step')
 
-        max_timesteps = 50
+        max_timesteps = 25
         model = ExperimentModel(sess=sess, vocab=dataset.vocab, max_timesteps=max_timesteps)
         sess.run(tf.global_variables_initializer())
         if os.path.exists(model_dir):
             model.restore_pretrained(model_dir)
-            global_step_start = sess.run(global_step_tensor)
-            print('Restored model from {} at step {}'.format(model_dir, global_step_start))
+            global_step = sess.run(global_step_tensor)
+            print('Restored model from {} at step {}'.format(model_dir, global_step))
         else:
             os.makedirs(model_dir)
-            global_step_start = sess.run(global_step_tensor)
+            global_step = sess.run(global_step_tensor)
 
         # Train
         total_steps = 20000
-        for step in range(global_step_start, total_steps):
-            if step % 100 == 0:
-                primer = dataset.get_primer(length=10)
-                print(
-                    'Step {}/{}: {}'.format(step, total_steps,
-                                            repr(''.join(primer[0]) + '|' + ''.join(
-                                                model.sample(primer=primer, sample_size=150)))))
-                model.save(model_dir)
-            model.train(**dataset.get_training_samples(batch_size=100, max_timesteps=model.max_timesteps))
+        batch_size = 100
+        for epoch_num in range(100):
+            for iteration in range(100):
+                if global_step % 100 == 0:
+                    primer = dataset.get_primer(length=10)
+                    print(
+                        'Step {}/{}: {}'.format(global_step, total_steps,
+                                                repr(''.join(primer[0]) + '|' + ''.join(
+                                                    model.sample(primer=primer, sample_size=150)))))
+                    model.save(model_dir)
+                model.train(**dataset.get_training_samples(epoch=epoch_num, batch_size=batch_size,
+                                                           max_timesteps=model.max_timesteps))
+                global_step = sess.run(global_step_tensor)
 
         # Sample
-        print('Training complete after {}! Sampling...'.format(total_steps))
+        print('Training complete after {} global steps! Sampling...'.format(total_steps))
         primer = dataset.get_primer(length=10)
         print(''.join(primer[0]) + '|' + ''.join(model.sample(sample_size=1000, primer=primer)))

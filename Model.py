@@ -29,10 +29,17 @@ class Model:
             self.build_graph()
             # Make sure everything exists
             for p in [self.rnn_initial_state_placeholder, self.rnn_zero_state, self.rnn_sequence_length,
-                      self.rnn_final_state, self.char_out_probs, self._char_out_max, self.trainable_variables,
+                      self.rnn_final_state, self.char_out_probs, self.char_out_max, self.trainable_variables,
                       self.train_op]:
                 if p is None:
                     raise NotImplementedError()
+            self.create_summaries()
+
+        self._epoch = None
+
+    @property
+    def epoch(self):
+        return self._epoch
 
     @abstractmethod
     def build_graph(self):
@@ -59,7 +66,7 @@ class Model:
         pass
 
     @abstractproperty
-    def _char_out_max(self):
+    def char_out_max(self):
         pass
 
     @abstractproperty
@@ -90,7 +97,7 @@ class Model:
     def save(self, filepath):
         self.saver.save(self.sess, filepath + 'model', global_step=self.global_step)
 
-    def train(self, x, t):
+    def train(self, x, t, epoch=None, additional_feed_args={}):
         batch_size = x.shape[0]
         x_embedding = np.zeros([batch_size, self.max_timesteps])
         t_embedding = np.zeros([batch_size, self.max_timesteps])
@@ -98,9 +105,18 @@ class Model:
             for i in range(self.max_timesteps):
                 x_embedding[b, i] = self.char_to_ix[x[b, i]]
                 t_embedding[b, i] = self.char_to_ix[t[b, i]]
-        self.sess.run(self.train_op, feed_dict={self.char_in: x_embedding, self.char_target: t_embedding})
 
-    def sample(self, sample_size, primer, temperature=1):
+        if epoch is None or self._epoch != epoch:
+            self._prev_rnn_state = self.sess.run(self.rnn_zero_state,
+                                                 feed_dict={self.char_in: x_embedding, **additional_feed_args})
+            self._epoch = epoch
+        self.sess.run(self.train_op,
+                      feed_dict={self.char_in: x_embedding,
+                                 self.char_target: t_embedding,
+                                 self.rnn_initial_state_placeholder: self._prev_rnn_state,
+                                 **additional_feed_args})
+
+    def sample(self, sample_size, primer, temperature=1, additional_feed_args={}):
         actual_output = []
 
         # Prime...
@@ -108,28 +124,27 @@ class Model:
         x = np.zeros([1, self.max_timesteps])
         for i, p in enumerate(primer[0]):
             x[0, i] = self.char_to_ix[p]
+        feed_dict = {self.char_in: x, self.rnn_sequence_length: primer_duration, **additional_feed_args}
         if temperature == 0:
-            output, s = self.sess.run([self._char_out_max, self.rnn_final_state],
-                                      feed_dict={self.char_in: x, self.rnn_sequence_length: primer_duration})
+            output, s = self.sess.run([self.char_out_max, self.rnn_final_state],
+                                      feed_dict=feed_dict)
             prev_o = output[0][-1]
         else:
-            probs, s = self.sess.run([self._char_out_probs, self.rnn_final_state],
-                                     feed_dict={self.char_in: x, self.rnn_sequence_length: primer_duration})
+            probs, s = self.sess.run([self.char_out_probs, self.rnn_final_state],
+                                     feed_dict=feed_dict)
             prev_o = np.random.choice(np.arange(self.vocab_size), p=probs[0][0])
 
         # Sample!
         for i in range(sample_size):
             x = np.zeros([1, self.max_timesteps])
             x[0, 0] = prev_o
+            feed_dict = {self.char_in: x, self.rnn_initial_state_placeholder: s, self.rnn_sequence_length: np.ones([1]),
+                         **additional_feed_args}
             if temperature == 0:
-                output, s = self.sess.run([self._char_out_max, self.rnn_final_state],
-                                          feed_dict={self.char_in: x, self.rnn_initial_state_placeholder: s,
-                                                     self.rnn_sequence_length: np.ones([1])})
+                output, s = self.sess.run([self.char_out_max, self.rnn_final_state], feed_dict=feed_dict)
                 o = output[0][0]
             else:
-                probs, s = self.sess.run([self._char_out_probs, self.rnn_final_state],
-                                         feed_dict={self.char_in: x, self.rnn_initial_state_placeholder: s,
-                                                    self.rnn_sequence_length: np.ones([1])})
+                probs, s = self.sess.run([self.char_out_probs, self.rnn_final_state], feed_dict=feed_dict)
                 o = np.random.choice(np.arange(self.vocab_size), p=probs[0][0])
             actual_output.append(self.ix_to_char[o])
             prev_o = o
